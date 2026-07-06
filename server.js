@@ -10,9 +10,29 @@ const initSqlJs = require('sql.js');
 const app  = express();
 const PORT = process.env.PORT || 3100;
 
+// ── BASIC AUTH MIDDLEWARE ─────────────────────────────────────
+const DASH_USER = process.env.DASHBOARD_USER || 'ahsan';
+const DASH_PASS = process.env.DASHBOARD_PASS || 'katycs2026';
+
+function basicAuth(req, res, next) {
+  if (req.path === '/api/health') return next();
+  const authHeader = req.headers['authorization'] || '';
+  if (!authHeader.startsWith('Basic ')) {
+    res.set('WWW-Authenticate', 'Basic realm="KATYCS Agent"');
+    return res.status(401).send('Authentication required');
+  }
+  const encoded = authHeader.slice(6);
+  const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+  const [user, pass] = decoded.split(':');
+  if (user === DASH_USER && pass === DASH_PASS) return next();
+  res.set('WWW-Authenticate', 'Basic realm="KATYCS Agent"');
+  return res.status(401).send('Invalid credentials');
+}
+
 // ── MIDDLEWARE ────────────────────────────────────────────────
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '4mb' }));
+app.use(basicAuth);
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── DATABASE SETUP ────────────────────────────────────────────
