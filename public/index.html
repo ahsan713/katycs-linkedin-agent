@@ -516,8 +516,22 @@ function renderReplyHistory() {
       </div>
       <div style="font-size:13px;color:var(--off);line-height:1.6;white-space:pre-wrap">${esc(r.reply)}</div>
       <button class="btn bd" style="margin-top:8px;padding:4px 12px;font-size:10px"
-        onclick="navigator.clipboard.writeText(${JSON.stringify(r.reply)}).then(()=>toast('Copied'))">Copy</button>
+        onclick="copyHistoryReply(${i})">Copy</button>
     </div>`).join('');
+}
+
+function copyHistoryReply(i) {
+  const text = replyHistory[i]?.reply;
+  if (!text) return;
+  navigator.clipboard.writeText(text)
+    .then(() => toast('Reply copied'))
+    .catch(() => {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      try { document.execCommand('copy'); toast('Reply copied'); } catch { toast('Select text manually'); }
+      document.body.removeChild(ta);
+    });
 }
 
 // ── HISTORY ───────────────────────────────────────────────────
