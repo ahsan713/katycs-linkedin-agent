@@ -497,6 +497,48 @@ app.patch('/api/posts/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// Draft a comment reply
+app.post('/api/draft-reply', async (req, res) => {
+  const { context, comment } = req.body;
+  if (!comment) return res.status(400).json({ error: 'comment required' });
+
+  const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || getSetting('anthropic_key');
+  if (!ANTHROPIC_KEY) return res.status(400).json({ error: 'No Anthropic API key configured' });
+
+  const prompt = `Draft a LinkedIn comment reply for Ahsan Abbas.
+
+Profile: Senior Cloud & Infrastructure Architect, Advisory, Product Owner at Invesco. 30+ years enterprise IT. $800M+ federal program delivery. Direct, no emojis, no filler words. Voice is confident and warm but never sycophantic.
+
+Post context: ${context || 'A LinkedIn post about enterprise IT, cloud infrastructure, or advisory work'}
+
+Comment received: "${comment}"
+
+Rules:
+- 1 to 3 sentences maximum
+- Never start with "Great question", "Thanks for sharing", or any compliment
+- Engage the specific point the commenter made
+- If the comment is generic praise (e.g. "Great post!"), keep the reply to 1 sentence
+- If the comment is substantive, acknowledge their specific point and add one insight
+- End with a statement, not a question
+- No emojis, no hashtags, no filler
+
+Return ONLY the reply text. Nothing else.`;
+
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({ model: 'claude-sonnet-4-6', max_tokens: 200, messages: [{ role: 'user', content: prompt }] })
+    });
+    const data = await r.json();
+    const reply = data.content?.[0]?.text?.trim();
+    if (!reply) throw new Error('No content from Anthropic');
+    res.json({ reply });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── START ─────────────────────────────────────────────────────
 initDB().then(() => {
   app.listen(PORT, () => {

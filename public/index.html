@@ -95,6 +95,7 @@
 <div class="tabs">
   <div class="tab active" onclick="switchTab('dashboard')">Dashboard</div>
   <div class="tab" onclick="switchTab('generate')">Generate</div>
+  <div class="tab" onclick="switchTab('comments')">Comment Replies</div>
   <div class="tab" onclick="switchTab('history')">History</div>
   <div class="tab" onclick="switchTab('setup')">Setup</div>
 </div>
@@ -184,6 +185,55 @@
   </div>
 </div>
 
+<!-- COMMENTS -->
+<div class="panel" id="tab-comments">
+  <div class="card">
+    <div class="ct">Comment Reply Drafter</div>
+    <div class="small" style="margin-bottom:14px">Paste a comment received on LinkedIn. The agent drafts a reply in your voice — direct, no emojis, no filler. Review, edit if needed, then post manually. Keeps your account ToS-compliant.</div>
+    <div>
+      <label>Your Post Context (brief summary of the post that received the comment)</label>
+      <textarea id="cmt-ctx" rows="2" placeholder="e.g. Post about the $300M VA supply chain program and lessons learned about HIPAA compliance at scale"></textarea>
+    </div>
+    <div class="mt10">
+      <label>Comment Received (paste it here)</label>
+      <textarea id="cmt-text" rows="4" placeholder="Paste the LinkedIn comment here..."></textarea>
+    </div>
+    <div class="mt10" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn bg" id="btn-draft-reply" onclick="draftReply()">
+        <span id="sp-reply" class="sp" style="display:none"></span>Draft Reply
+      </button>
+      <button class="btn bo" onclick="draftReply()">Regenerate</button>
+      <span class="small" style="margin-left:auto">Reply is drafted server-side — no browser API key needed</span>
+    </div>
+  </div>
+
+  <div class="card" id="reply-result" style="display:none">
+    <div class="ct" style="color:var(--green)">Drafted Reply</div>
+    <div style="background:var(--navy2);border:1px solid var(--dim);border-left:4px solid var(--green);border-radius:6px;padding:16px;font-size:14px;line-height:1.75;color:var(--off);white-space:pre-wrap" id="reply-text"></div>
+    <div class="mt10" style="display:flex;gap:10px;align-items:center">
+      <button class="btn bgr" onclick="copyReply()">Copy Reply</button>
+      <span class="small">Review before posting. Edit for personal touch. Post manually on LinkedIn.</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="ct">Engagement Rules</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="small">✓ Reply within 2 hours of posting</div>
+      <div class="small">✓ 1–3 sentences per reply maximum</div>
+      <div class="small">✓ No emojis. No filler phrases.</div>
+      <div class="small">✓ End with a statement, not a question</div>
+      <div class="small">✓ Like generic praise, reply to substantive comments</div>
+      <div class="small">✓ Each reply extends post reach for 72 hours</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="ct">Recent Replies Drafted</div>
+    <div id="reply-history-list"><div style="color:var(--muted);font-size:12px;padding:8px 0">No replies drafted yet this session.</div></div>
+  </div>
+</div>
+
 <!-- HISTORY -->
 <div class="panel" id="tab-history">
   <div class="card">
@@ -258,8 +308,7 @@ const API = ''; // same-origin — no base URL needed
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-  // find tab by index
-  const idx = {dashboard:0,generate:1,history:2,setup:3}[name];
+  const idx = {dashboard:0,generate:1,comments:2,history:3,setup:4}[name];
   document.querySelectorAll('.tab')[idx].classList.add('active');
   document.getElementById('tab-' + name).classList.add('active');
   if (name === 'history') loadHistory();
@@ -414,6 +463,61 @@ async function pushSingle() {
 function copyGenerated() {
   const text = document.getElementById('gen-text').value;
   navigator.clipboard.writeText(text).then(() => toast('Copied')).catch(() => toast('Select text manually'));
+}
+
+// ── COMMENT REPLY DRAFTER ─────────────────────────────────────
+const replyHistory = [];
+
+async function draftReply() {
+  const ctx     = document.getElementById('cmt-ctx').value.trim();
+  const comment = document.getElementById('cmt-text').value.trim();
+  if (!comment) { toast('Paste a comment first'); return; }
+
+  const btn = document.getElementById('btn-draft-reply');
+  const sp  = document.getElementById('sp-reply');
+  btn.disabled = true; sp.style.display = 'inline-block';
+  document.getElementById('reply-result').style.display = 'none';
+
+  try {
+    const r = await api('POST', '/api/draft-reply', { context: ctx, comment });
+    document.getElementById('reply-text').textContent = r.reply;
+    document.getElementById('reply-result').style.display = 'block';
+
+    // Add to session history
+    replyHistory.unshift({ comment: comment.substring(0, 80), reply: r.reply, time: new Date().toLocaleTimeString() });
+    renderReplyHistory();
+  } catch(e) {
+    toast('Error: ' + (e.message || 'Draft failed'));
+  }
+  btn.disabled = false; sp.style.display = 'none';
+}
+
+function copyReply() {
+  const text = document.getElementById('reply-text').textContent;
+  navigator.clipboard.writeText(text)
+    .then(() => toast('Reply copied — paste it on LinkedIn'))
+    .catch(() => {
+      // Fallback
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      try { document.execCommand('copy'); toast('Reply copied'); } catch { toast('Select text manually'); }
+      document.body.removeChild(ta);
+    });
+}
+
+function renderReplyHistory() {
+  const el = document.getElementById('reply-history-list');
+  if (!replyHistory.length) return;
+  el.innerHTML = replyHistory.slice(0, 5).map(r => `
+    <div style="background:var(--navy2);border:1px solid var(--dim);border-radius:6px;padding:12px;margin-bottom:8px">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">
+        Comment: "${esc(r.comment)}..." · ${r.time}
+      </div>
+      <div style="font-size:13px;color:var(--off);line-height:1.6;white-space:pre-wrap">${esc(r.reply)}</div>
+      <button class="btn bd" style="margin-top:8px;padding:4px 12px;font-size:10px"
+        onclick="navigator.clipboard.writeText(${JSON.stringify(r.reply)}).then(()=>toast('Copied'))">Copy</button>
+    </div>`).join('');
 }
 
 // ── HISTORY ───────────────────────────────────────────────────
